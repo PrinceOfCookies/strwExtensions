@@ -1,5 +1,13 @@
-# strwExtensions
-extensions "I" made for myself to make things a little easier for me.
+<div align="center">
+    <img src="ext.png"
+        title="strwExtensions" alt="logo"/>
+    <h1>strwExtensions</h1>
+    <p>
+        extensions "I" made that simply just work without the bullshit
+        <br>
+        volume booster, youtube downloader, bpm checker & page translator
+    </p>
+</div>
 
 ## extended information
 I've grown increasingly frustrated at extensions on the chrome webstore getting modified to be malicious, or for the extensions to not work/require a subscription to work, so my philosophy of "just make shit that works" grew on me and I decided to (and god forbid) vibe code these for my own personal workflow, and they just work with no bullshit.
