@@ -17,7 +17,6 @@ import os
 import re
 import selectors
 import shutil
-import secrets
 import subprocess
 import time
 import uuid
@@ -33,7 +32,6 @@ app = Flask(__name__)
 API_URL = os.environ.get("API_URL", "http://localhost:9200/").rstrip("/") + "/"
 WORK_DIR = Path(os.environ.get("WORK_DIR", "/tmp/spotdl-jobs"))
 MAX_AGE_SECONDS = int(os.environ.get("MAX_AGE_SECONDS", "3600"))
-API_KEY = os.environ.get("API_KEY", "")
 MAX_ACTIVE_JOBS = int(os.environ.get("MAX_ACTIVE_JOBS", "2"))
 POT_BASE_URL = os.environ.get("POT_BASE_URL", "")
 
@@ -60,17 +58,7 @@ _lock = Lock()
 
 
 @app.before_request
-def authorize():
-    if request.method == "OPTIONS" or request.path == "/health":
-        return None
-    if request.path == "/tunnel":
-        supplied = request.args.get("token", "")
-        expected = get_progress(request.args.get("id", "")).get("tunnel_token", "")
-        if supplied and expected and secrets.compare_digest(supplied, expected):
-            return None
-    if not API_KEY or not secrets.compare_digest(request.headers.get("Authorization", ""),
-                                                  f"Api-Key {API_KEY}"):
-        return jsonify({"status": "error", "error": {"code": "error.api.unauthorized"}}), 401
+def reject_large_requests():
     if request.content_length is not None and request.content_length > 16_384:
         return jsonify({"status": "error", "error": {"code": "error.api.request_too_large"}}), 413
     return None
@@ -142,7 +130,7 @@ RE_DONE = re.compile(r"""Downloaded ["'](.+?)["']""", re.I)
 RE_SKIP = re.compile(r"Skipping (.+?)(?: \(|$)", re.I)
 
 
-def run_job(job_id, job_dir, url, audio_format, bitrate, tunnel_token):
+def run_job(job_id, job_dir, url, audio_format, bitrate):
     out_tmpl = str(job_dir / "{artist} - {title}.{output-ext}")
 
     cmd = [
@@ -162,8 +150,7 @@ def run_job(job_id, job_dir, url, audio_format, bitrate, tunnel_token):
         cmd += ["--yt-dlp-args",
                 f"--extractor-args youtubepot-bgutilhttp:base_url={POT_BASE_URL}"]
 
-    set_progress(job_id, state="queued", percent=None, track=None,
-                 tunnel_token=tunnel_token)
+    set_progress(job_id, state="queued", percent=None, track=None)
 
     try:
         # Python block-buffers stdout when it is not a terminal, so
@@ -278,7 +265,7 @@ def run_job(job_id, job_dir, url, audio_format, bitrate, tunnel_token):
         size=media.stat().st_size,
         tracks_done=done,
         total_tracks=total,
-        url=f"{API_URL}tunnel?id={job_id}&token={tunnel_token}",
+        url=f"{API_URL}tunnel?id={job_id}",
     )
 
 
@@ -313,12 +300,11 @@ def create():
         return jsonify({"status": "error", "error": {"code": "error.api.audio_bitrate.invalid"}}), 400
 
     job_id = uuid.uuid4().hex
-    tunnel_token = secrets.token_urlsafe(32)
     job_dir = WORK_DIR / job_id
     job_dir.mkdir(parents=True, exist_ok=True)
 
     Thread(target=run_job,
-           args=(job_id, job_dir, url, audio_format, bitrate, tunnel_token),
+           args=(job_id, job_dir, url, audio_format, bitrate),
            daemon=True).start()
 
     return jsonify({
@@ -333,7 +319,6 @@ def progress():
     p = get_progress(request.args.get("id", ""))
     if not p:
         return jsonify({"state": "unknown"}), 404
-    p.pop("tunnel_token", None)
     return jsonify(p)
 
 

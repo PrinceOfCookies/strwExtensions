@@ -1,12 +1,6 @@
 @echo off
-setlocal EnableDelayedExpansion
 REM strwBalt installer - Windows
 cd /d "%~dp0"
-
-if not exist .env (
-    for /f %%i in ('powershell -NoProfile -Command "-join ((1..48) ^| ForEach-Object { [char[]]'0123456789abcdef' ^| Get-Random })"') do set "STRW_TOKEN=%%i"
-    >.env echo STRWBALT_API_KEY=!STRW_TOKEN!
-)
 
 echo.
 echo   strwBalt setup
@@ -39,9 +33,6 @@ timeout /t 25 /nobreak >nul
 curl -fsS http://localhost:9000/ >nul 2>&1 && echo     cobalt: ready || echo     cobalt: not responding
 curl -fsS http://localhost:9100/health >nul 2>&1 && echo     yt-dlp: ready || echo     yt-dlp: not responding
 
-echo.
-echo   API key ^(paste this into the extension Options page^):
-for /f "tokens=2 delims==" %%i in (.env) do echo     %%i
 
 echo.
 echo   Next: install the browser extension

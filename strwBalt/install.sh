@@ -4,12 +4,6 @@ set -e
 
 cd "$(dirname "$0")"
 
-if [ ! -f .env ]; then
-    token="$(openssl rand -hex 24)"
-    printf 'STRWBALT_API_KEY=%s\n' "$token" > .env
-    chmod 600 .env
-fi
-
 echo ""
 echo "  strwBalt setup"
 echo "  =============="
@@ -60,8 +54,6 @@ else
     echo "  Backend started with problems — see the messages above."
 fi
 
-echo "  API key (paste this into the extension Options page):"
-sed 's/^STRWBALT_API_KEY=/  /' .env
 
 cat <<'NEXT'
 

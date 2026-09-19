@@ -146,9 +146,10 @@ async function askCobalt(pageUrl, extra = {}, forcedBackend = null) {
     Accept: "application/json",
     "Content-Type": "application/json"
   };
-  // The local helper services require this key; compatible cobalt instances
-  // may also opt into the same Api-Key header.
-  if (cfg.apiKey) headers.Authorization = `Api-Key ${cfg.apiKey}`;
+  // Optional authentication for a configured cobalt instance.
+  if (cfg.apiKey && !useYtdlp && !useSpotdl) {
+    headers.Authorization = `Api-Key ${cfg.apiKey}`;
+  }
 
   // The two backends accept different parameters. Cobalt validates its
   // request body strictly and rejects unknown keys with
@@ -217,9 +218,7 @@ async function pollJob(base, jobId, pageUrl) {
 
       let p;
       try {
-        const cfg = await config();
-        const headers = cfg.apiKey ? { Authorization: `Api-Key ${cfg.apiKey}` } : {};
-        const res = await fetch(`${base}/progress?id=${jobId}`, { headers });
+        const res = await fetch(`${base}/progress?id=${jobId}`);
         p = await res.json();
       } catch {
         continue; // transient; keep polling

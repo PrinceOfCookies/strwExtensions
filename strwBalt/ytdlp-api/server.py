@@ -14,7 +14,6 @@ either backend without special-casing.
 import os
 import re
 import shutil
-import secrets
 import time
 import uuid
 from pathlib import Path
@@ -29,7 +28,6 @@ app = Flask(__name__)
 API_URL = os.environ.get("API_URL", "http://localhost:9100/").rstrip("/") + "/"
 WORK_DIR = Path(os.environ.get("WORK_DIR", "/tmp/ytdlp-jobs"))
 MAX_AGE_SECONDS = int(os.environ.get("MAX_AGE_SECONDS", "3600"))
-API_KEY = os.environ.get("API_KEY", "")
 MAX_ACTIVE_JOBS = int(os.environ.get("MAX_ACTIVE_JOBS", "2"))
 JOB_TIMEOUT = int(os.environ.get("JOB_TIMEOUT", "2700"))
 
@@ -57,17 +55,7 @@ _progress = {}
 
 
 @app.before_request
-def authorize():
-    if request.method == "OPTIONS" or request.path == "/health":
-        return None
-    if request.path == "/tunnel":
-        supplied = request.args.get("token", "")
-        expected = get_progress(request.args.get("id", "")).get("tunnel_token", "")
-        if supplied and expected and secrets.compare_digest(supplied, expected):
-            return None
-    if not API_KEY or not secrets.compare_digest(request.headers.get("Authorization", ""),
-                                                  f"Api-Key {API_KEY}"):
-        return jsonify({"status": "error", "error": {"code": "error.api.unauthorized"}}), 401
+def reject_large_requests():
     if request.content_length is not None and request.content_length > 16_384:
         return jsonify({"status": "error", "error": {"code": "error.api.request_too_large"}}), 413
     return None
@@ -218,7 +206,6 @@ def create():
         return jsonify({"status": "error", "error": {"code": "error.api.audio_bitrate.invalid"}}), 400
 
     job_id = uuid.uuid4().hex
-    tunnel_token = secrets.token_urlsafe(32)
     job_dir = WORK_DIR / job_id
     job_dir.mkdir(parents=True, exist_ok=True)
 
@@ -287,10 +274,10 @@ def create():
             eta=None,
             filename=media.name,
             size=media.stat().st_size,
-            url=f"{API_URL}tunnel?id={job_id}&token={tunnel_token}",
+            url=f"{API_URL}tunnel?id={job_id}",
         )
 
-    set_progress(job_id, state="queued", percent=None, tunnel_token=tunnel_token)
+    set_progress(job_id, state="queued", percent=None)
     Thread(target=work, daemon=True).start()
 
     # Returns immediately; the client polls /progress and then fetches the
@@ -308,7 +295,6 @@ def progress():
     p = get_progress(job_id)
     if not p:
         return jsonify({"state": "unknown"}), 404
-    p.pop("tunnel_token", None)
     return jsonify(p)
 
 
