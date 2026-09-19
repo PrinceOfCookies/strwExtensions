@@ -1,6 +1,6 @@
 <div align="center">
     <img src="ext.png"
-        title="strwExtensions" alt="logo" width="150"/>
+        title="strwExtensions" alt="logo" width="450"/>
     <h1>strwExtensions</h1>
     <p>
         extensions "I" made that simply just work without the bullshit
