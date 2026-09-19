@@ -1,0 +1,111 @@
+# strwBalt — self-hosted media downloader backend
+#
+# Everything binds to 127.0.0.1, so nothing is exposed to your network and
+# the browser treats it as a secure context (no TLS or certificates needed).
+#
+# Start:  docker compose up -d --build
+# Stop:   docker compose down
+# Logs:   docker compose logs -f
+
+services:
+  # cobalt handles ~20 platforms: twitter/x, reddit, tiktok, soundcloud,
+  # bluesky, vimeo, twitch clips, tumblr, and more.
+  cobalt:
+    image: ghcr.io/imputnet/cobalt:11
+    init: true
+    read_only: true
+    restart: unless-stopped
+    container_name: strwbalt-cobalt
+    ports:
+      - 127.0.0.1:9000:9000
+    environment:
+      API_URL: "http://localhost:9000/"
+      # Proof-of-origin tokens for YouTube. NOTE: this must point at a
+      # bgutil provider (POST /get_pot). Cobalt's own docs still recommend
+      # yt-session-generator, which serves GET /token and 404s here.
+      YOUTUBE_SESSION_SERVER: "http://bgutil-pot:4416/"
+      # Optional: some sites (instagram, reddit) show more when logged in.
+      # Create cookies.json first, then uncomment this and the volume below.
+      # COOKIE_PATH: "/cookies.json"
+    # volumes:
+    #   - ./cookies.json:/cookies.json
+    depends_on:
+      bgutil-pot:
+        condition: service_healthy
+    labels:
+      - com.centurylinklabs.watchtower.scope=strwbalt
+
+  # Generates YouTube proof-of-origin tokens. Runs BotGuard in plain Node,
+  # so it starts in seconds (no headless browser).
+  bgutil-pot:
+    image: brainicism/bgutil-ytdlp-pot-provider:node
+    init: true
+    restart: unless-stopped
+    container_name: strwbalt-pot
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('net').connect(4416,'127.0.0.1').on('connect',()=>process.exit(0)).on('error',()=>process.exit(1))"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 15s
+    labels:
+      - com.centurylinklabs.watchtower.scope=strwbalt
+
+  # yt-dlp handles youtube and instagram, which cobalt struggles with:
+  # youtube videos moved to SABR come back empty, and some instagram reels
+  # return only a thumbnail.
+  ytdlp-api:
+    build: ./ytdlp-api
+    init: true
+    restart: unless-stopped
+    container_name: strwbalt-ytdlp
+    ports:
+      - 127.0.0.1:9100:9100
+    environment:
+      API_URL: "http://localhost:9100/"
+      # Shares the same proof-of-origin token provider cobalt uses. Without
+      # it YouTube returns "Sign in to confirm you're not a bot".
+      POT_BASE_URL: "http://bgutil-pot:4416"
+      # Pulls the newest yt-dlp on every start. Keep this on — staying
+      # current is most of what makes yt-dlp reliable.
+      AUTO_UPDATE: "1"
+      # Optional: cookies.txt (Netscape format) for age-restricted or
+      # private videos. Create the file, then uncomment the volume below.
+      # COOKIES_FILE: "/cookies.txt"
+    # volumes:
+    #   - ./cookies.txt:/cookies.txt:ro
+    depends_on:
+      bgutil-pot:
+        condition: service_healthy
+    labels:
+      - com.centurylinklabs.watchtower.scope=strwbalt
+
+  # spotdl for Spotify links. It reads Spotify metadata (title, artist,
+  # album, cover art) and fetches the matching audio from YouTube, so the
+  # audio is YouTube quality - the win is proper tags and album/playlist
+  # handling. Albums and playlists come back as a single zip.
+  spotdl-api:
+    build: ./spotdl-api
+    init: true
+    restart: unless-stopped
+    container_name: strwbalt-spotdl
+    ports:
+      - 127.0.0.1:9200:9200
+    environment:
+      API_URL: "http://localhost:9200/"
+      POT_BASE_URL: "http://bgutil-pot:4416"
+      AUTO_UPDATE: "1"
+    depends_on:
+      bgutil-pot:
+        condition: service_healthy
+    labels:
+      - com.centurylinklabs.watchtower.scope=strwbalt
+
+  # Keeps the images current. Scoped so it ignores your other containers.
+  watchtower:
+    image: nickfedor/watchtower
+    restart: unless-stopped
+    container_name: strwbalt-watchtower
+    command: --cleanup --scope strwbalt --interval 3600 --include-restarting
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock

@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>cobalt downloader settings</title>
+<style>
+  body { font-family: system-ui, sans-serif; max-width: 520px;
+         margin: 40px auto; padding: 0 20px; line-height: 1.5; }
+  label { display: block; margin-top: 20px; font-weight: 600; }
+  input, select, textarea { width: 100%; font-family: inherit; padding: 8px; margin-top: 6px;
+                  font-size: 14px; box-sizing: border-box; }
+  .hint { font-weight: 400; font-size: 13px; color: #666; margin-top: 4px; }
+  button { margin-top: 24px; padding: 10px 20px; font-size: 14px; cursor: pointer; }
+  #status { margin-left: 12px; color: #2a7; }
+</style>
+</head>
+<body>
+  <h1>cobalt downloader</h1>
+
+  <label>instance URL
+    <input id="apiUrl" type="text" placeholder="http://localhost:9000/">
+    <div class="hint">handles everything except YouTube. must end with a slash. this address
+      also has to be listed in the extension's host_permissions in
+      manifest.json, so if you change the host or port, update that too.</div>
+  </label>
+
+  <label>yt-dlp backend URL (YouTube)
+    <input id="ytdlpUrl" type="text" placeholder="http://localhost:9100/">
+    <div class="hint">YouTube links go here instead of cobalt, because cobalt
+      can't fetch videos Google has moved to SABR. Leave empty to send
+      everything to cobalt.</div>
+  </label>
+
+  <label>sites handled by yt-dlp
+    <textarea id="ytdlpHosts" rows="4" placeholder="youtube.com"></textarea>
+    <div class="hint">One hostname per line; subdomains match automatically.
+      Everything not listed goes to cobalt. Add a site here if cobalt handles
+      it badly — yt-dlp supports most of the same platforms.</div>
+  </label>
+
+  <label>preferred video quality
+    <select id="videoQuality">
+      <option value="max">max</option>
+      <option value="2160">2160p (4K)</option>
+      <option value="1440">1440p</option>
+      <option value="1080">1080p</option>
+      <option value="720">720p</option>
+      <option value="480">480p</option>
+      <option value="360">360p</option>
+    </select>
+    <div class="hint">cobalt falls back to the closest available quality.</div>
+  </label>
+
+  <label>video codec
+    <select id="videoCodec">
+      <option value="h264">h264 (editing-friendly, max 1080p)</option>
+      <option value="av1">av1 (smaller files, higher res)</option>
+      <option value="vp9">vp9</option>
+      <option value="any">any (best available)</option>
+    </select>
+    <div class="hint">h264 imports into Premiere Pro and Resolve without
+      extra codec packs; av1 gives "unsupported video compression type av01".
+      YouTube only serves h264 up to 1080p — above that it falls back to the
+      best h264 available.</div>
+  </label>
+
+  <label>API key (optional)
+    <input id="apiKey" type="password" placeholder="leave empty if unused">
+    <div class="hint">only needed if you set API_AUTH_REQUIRED on your
+      instance. sent as "Authorization: Api-Key ...".</div>
+  </label>
+
+  <button id="save">save</button><span id="status"></span>
+
+  <script src="options.js"></script>
+</body>
+</html>

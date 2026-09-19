@@ -1,0 +1,28 @@
+/* Match YouTube's own control buttons: they are 48px wide, full player
+   height, with the icon centred via flex rather than padding. The earlier
+   fixed padding is what made this sit off-centre against the gear icon. */
+.cobalt-dl-btn {
+    display: inline-flex !important;
+    align-items: center;
+    justify-content: center;
+    width: 48px;
+    height: 100%;
+    padding: 0;
+    margin: 0;
+    border: none;
+    background: none;
+    cursor: pointer;
+    opacity: .9;
+    vertical-align: top;
+    float: left;
+}
+
+.cobalt-dl-btn:hover { opacity: 1; }
+.cobalt-dl-btn:disabled { cursor: default; }
+
+/* Fixed icon box so the spinner and checkmark don't shift the layout. */
+.cobalt-dl-btn svg {
+    display: block;
+    width: 24px;
+    height: 24px;
+}

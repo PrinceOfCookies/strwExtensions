@@ -1,0 +1,63 @@
+{
+  "manifest_version": 3,
+  "name": "strwBalt",
+  "version": "1.7.3",
+  "description": "localised version of cobalt.tools, adjusted to work for instagram and youtube through ytdlp.",
+  "permissions": [
+    "downloads",
+    "storage",
+    "contextMenus",
+    "tabs"
+  ],
+  "host_permissions": [
+    "http://localhost:9000/*",
+    "http://127.0.0.1:9000/*",
+    "http://localhost:9100/*",
+    "http://127.0.0.1:9100/*",
+    "http://localhost:9200/*",
+    "http://127.0.0.1:9200/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "options_ui": {
+    "page": "options.html",
+    "open_in_tab": true
+  },
+  "action": {
+    "default_title": "strwBalt",
+    "default_popup": "popup.html",
+    "default_icon": {
+      "512": "icons/icon512.png"
+    }
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://www.youtube.com/*",
+        "https://m.youtube.com/*"
+      ],
+      "js": [
+        "content.js"
+      ],
+      "css": [
+        "content.css"
+      ],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": [
+        "http://*/*",
+        "https://*/*"
+      ],
+      "js": [
+        "toast.js"
+      ],
+      "run_at": "document_idle",
+      "all_frames": false
+    }
+  ],
+  "icons": {
+    "512": "icons/icon512.png"
+  }
+}
