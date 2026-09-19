@@ -1,0 +1,21 @@
+{
+  "manifest_version": 3,
+  "name": "strwTranslate",
+  "version": "2.0.0",
+  "description": "Translate a page in place. No account, no API key, nothing running until you ask for it.",
+  "permissions": ["scripting", "storage", "tabs"],
+  "host_permissions": ["<all_urls>", "https://translate.googleapis.com/*"],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "strwTranslate",
+    "default_icon": {
+      "512": "icons/icon512.png"
+    }
+  },
+  "icons": {
+    "512": "icons/icon512.png"
+  },
+  "background": {
+    "service_worker": "background.js"
+  }
+}
