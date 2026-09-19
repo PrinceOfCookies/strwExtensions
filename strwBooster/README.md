@@ -1,6 +1,6 @@
 # strwBooster
 > the easiest way to increase the volume of the audio playing on your tab
-> <img src="booster.png" align="right" style="width:180px; height:auto;"/>
+> <img src="icon512.png" align="right" style="width:150px; height:auto;"/>
 
 as you could probably tell by the name, it boosts the audio of your current tab! it's handy if the video you're watching is very quiet or if you want to blast your eardrums with femtanyl even further. it has a way to save settings for certain websites if required!
 
