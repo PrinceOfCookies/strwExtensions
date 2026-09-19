@@ -120,6 +120,14 @@ chrome.runtime.onMessage.addListener((m) => {
 $("go").addEventListener("click", async () => {
   const target = $("lang").value;
   if (!state.tabId) return;
+  const { privacyAcknowledged = false } = await chrome.storage.local.get("privacyAcknowledged");
+  if (!privacyAcknowledged) {
+    const accepted = confirm(
+      "This sends visible page text, titles, alt text, placeholders, and labels to Google Translate. Continue?"
+    );
+    if (!accepted) return;
+    await chrome.storage.local.set({ privacyAcknowledged: true });
+  }
   await remember(target);
   msg("");
   $("go").disabled = true;

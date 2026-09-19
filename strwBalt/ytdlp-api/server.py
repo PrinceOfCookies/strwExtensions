@@ -14,10 +14,12 @@ either backend without special-casing.
 import os
 import re
 import shutil
+import secrets
 import time
 import uuid
 from pathlib import Path
 from threading import Lock, Thread
+from urllib.parse import urlparse
 
 from flask import Flask, jsonify, request, send_file
 import yt_dlp
@@ -27,6 +29,9 @@ app = Flask(__name__)
 API_URL = os.environ.get("API_URL", "http://localhost:9100/").rstrip("/") + "/"
 WORK_DIR = Path(os.environ.get("WORK_DIR", "/tmp/ytdlp-jobs"))
 MAX_AGE_SECONDS = int(os.environ.get("MAX_AGE_SECONDS", "3600"))
+API_KEY = os.environ.get("API_KEY", "")
+MAX_ACTIVE_JOBS = int(os.environ.get("MAX_ACTIVE_JOBS", "2"))
+JOB_TIMEOUT = int(os.environ.get("JOB_TIMEOUT", "2700"))
 
 # Proof-of-origin token provider. YouTube increasingly rejects anonymous
 # requests with "Sign in to confirm you're not a bot"; a poToken is what
@@ -49,6 +54,29 @@ _lock = Lock()
 #   eta      seconds remaining
 #   path     final file, once done
 _progress = {}
+
+
+@app.before_request
+def authorize():
+    if request.method == "OPTIONS" or request.path == "/health":
+        return None
+    if request.path == "/tunnel":
+        supplied = request.args.get("token", "")
+        expected = get_progress(request.args.get("id", "")).get("tunnel_token", "")
+        if supplied and expected and secrets.compare_digest(supplied, expected):
+            return None
+    if not API_KEY or not secrets.compare_digest(request.headers.get("Authorization", ""),
+                                                  f"Api-Key {API_KEY}"):
+        return jsonify({"status": "error", "error": {"code": "error.api.unauthorized"}}), 401
+    if request.content_length is not None and request.content_length > 16_384:
+        return jsonify({"status": "error", "error": {"code": "error.api.request_too_large"}}), 413
+    return None
+
+
+def active_jobs():
+    with _lock:
+        return sum(1 for p in _progress.values()
+                   if p.get("state") in ("queued", "downloading", "processing"))
 
 
 def set_progress(job_id, **fields):
@@ -89,6 +117,8 @@ def sweep():
     now = time.time()
     for d in WORK_DIR.iterdir():
         if not d.is_dir():
+            continue
+        if get_progress(d.name).get("state") in ("queued", "downloading", "processing"):
             continue
         try:
             if now - d.stat().st_mtime > MAX_AGE_SECONDS:
@@ -143,7 +173,6 @@ def build_format(mode, quality, codec="h264"):
 
 
 def cors(resp):
-    resp.headers["Access-Control-Allow-Origin"] = "*"
     resp.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization, Accept"
     resp.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
     return resp
@@ -165,18 +194,31 @@ def preflight():
 def create():
     sweep()
 
+    if active_jobs() >= MAX_ACTIVE_JOBS:
+        return jsonify({"status": "error", "error": {"code": "error.api.busy"}}), 429
+
     data = request.get_json(silent=True) or {}
     url = data.get("url")
     if not url:
         return jsonify({"status": "error", "error": {"code": "error.api.link.missing"}}), 400
+    parsed = urlparse(str(url))
+    if parsed.scheme not in ("http", "https") or not parsed.hostname:
+        return jsonify({"status": "error", "error": {"code": "error.api.link.invalid"}}), 400
 
     mode = data.get("downloadMode", "auto")
     quality = data.get("videoQuality", "1080")
     codec = data.get("videoCodec", os.environ.get("DEFAULT_CODEC", "h264"))
     audio_format = data.get("audioFormat", "mp3")
     audio_bitrate = str(data.get("audioBitrate", "320"))
+    if mode not in ("auto", "audio"):
+        return jsonify({"status": "error", "error": {"code": "error.api.mode.invalid"}}), 400
+    if audio_format not in ("mp3", "m4a", "opus", "wav", "flac"):
+        return jsonify({"status": "error", "error": {"code": "error.api.audio_format.invalid"}}), 400
+    if audio_bitrate not in ("best", "128", "192", "256", "320"):
+        return jsonify({"status": "error", "error": {"code": "error.api.audio_bitrate.invalid"}}), 400
 
     job_id = uuid.uuid4().hex
+    tunnel_token = secrets.token_urlsafe(32)
     job_dir = WORK_DIR / job_id
     job_dir.mkdir(parents=True, exist_ok=True)
 
@@ -187,6 +229,7 @@ def create():
         "quiet": True,
         "no_warnings": True,
         "noprogress": True,
+        "socket_timeout": 30,
         # Single merged file the browser can just save.
         "merge_output_format": "mp4",
         "extractor_args": {
@@ -206,9 +249,12 @@ def create():
         opts["postprocessors"] = [pp]
         opts.pop("merge_output_format", None)
 
-    opts["progress_hooks"] = [make_hook(job_id)]
-
     def work():
+        deadline = time.monotonic() + JOB_TIMEOUT
+        def timeout_hook(_):
+            if time.monotonic() > deadline:
+                raise yt_dlp.utils.DownloadError("job exceeded the time limit")
+        opts["progress_hooks"] = [make_hook(job_id), timeout_hook]
         try:
             with yt_dlp.YoutubeDL(opts) as ydl:
                 ydl.extract_info(url, download=True)
@@ -241,10 +287,10 @@ def create():
             eta=None,
             filename=media.name,
             size=media.stat().st_size,
-            url=f"{API_URL}tunnel?id={job_id}",
+            url=f"{API_URL}tunnel?id={job_id}&token={tunnel_token}",
         )
 
-    set_progress(job_id, state="queued", percent=None)
+    set_progress(job_id, state="queued", percent=None, tunnel_token=tunnel_token)
     Thread(target=work, daemon=True).start()
 
     # Returns immediately; the client polls /progress and then fetches the
@@ -262,6 +308,7 @@ def progress():
     p = get_progress(job_id)
     if not p:
         return jsonify({"state": "unknown"}), 404
+    p.pop("tunnel_token", None)
     return jsonify(p)
 
 

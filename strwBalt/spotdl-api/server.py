@@ -15,13 +15,16 @@ metadata and album/playlist handling.
 
 import os
 import re
+import selectors
 import shutil
+import secrets
 import subprocess
 import time
 import uuid
 import zipfile
 from pathlib import Path
 from threading import Lock, Thread
+from urllib.parse import urlparse
 
 from flask import Flask, jsonify, request, send_file
 
@@ -30,6 +33,8 @@ app = Flask(__name__)
 API_URL = os.environ.get("API_URL", "http://localhost:9200/").rstrip("/") + "/"
 WORK_DIR = Path(os.environ.get("WORK_DIR", "/tmp/spotdl-jobs"))
 MAX_AGE_SECONDS = int(os.environ.get("MAX_AGE_SECONDS", "3600"))
+API_KEY = os.environ.get("API_KEY", "")
+MAX_ACTIVE_JOBS = int(os.environ.get("MAX_ACTIVE_JOBS", "2"))
 POT_BASE_URL = os.environ.get("POT_BASE_URL", "")
 
 WORK_DIR.mkdir(parents=True, exist_ok=True)
@@ -54,6 +59,29 @@ _progress = {}
 _lock = Lock()
 
 
+@app.before_request
+def authorize():
+    if request.method == "OPTIONS" or request.path == "/health":
+        return None
+    if request.path == "/tunnel":
+        supplied = request.args.get("token", "")
+        expected = get_progress(request.args.get("id", "")).get("tunnel_token", "")
+        if supplied and expected and secrets.compare_digest(supplied, expected):
+            return None
+    if not API_KEY or not secrets.compare_digest(request.headers.get("Authorization", ""),
+                                                  f"Api-Key {API_KEY}"):
+        return jsonify({"status": "error", "error": {"code": "error.api.unauthorized"}}), 401
+    if request.content_length is not None and request.content_length > 16_384:
+        return jsonify({"status": "error", "error": {"code": "error.api.request_too_large"}}), 413
+    return None
+
+
+def active_jobs():
+    with _lock:
+        return sum(1 for p in _progress.values()
+                   if p.get("state") in ("queued", "downloading", "processing"))
+
+
 def set_progress(job_id, **fields):
     with _lock:
         _progress.setdefault(job_id, {}).update(fields)
@@ -69,6 +97,8 @@ def sweep():
     for d in WORK_DIR.iterdir():
         if not d.is_dir():
             continue
+        if get_progress(d.name).get("state") in ("queued", "downloading", "processing"):
+            continue
         try:
             if now - d.stat().st_mtime > MAX_AGE_SECONDS:
                 shutil.rmtree(d, ignore_errors=True)
@@ -80,7 +110,6 @@ def sweep():
 
 
 def cors(resp):
-    resp.headers["Access-Control-Allow-Origin"] = "*"
     resp.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization, Accept"
     resp.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
     return resp
@@ -113,7 +142,7 @@ RE_DONE = re.compile(r"""Downloaded ["'](.+?)["']""", re.I)
 RE_SKIP = re.compile(r"Skipping (.+?)(?: \(|$)", re.I)
 
 
-def run_job(job_id, job_dir, url, audio_format, bitrate):
+def run_job(job_id, job_dir, url, audio_format, bitrate, tunnel_token):
     out_tmpl = str(job_dir / "{artist} - {title}.{output-ext}")
 
     cmd = [
@@ -133,7 +162,8 @@ def run_job(job_id, job_dir, url, audio_format, bitrate):
         cmd += ["--yt-dlp-args",
                 f"--extractor-args youtubepot-bgutilhttp:base_url={POT_BASE_URL}"]
 
-    set_progress(job_id, state="queued", percent=None, track=None)
+    set_progress(job_id, state="queued", percent=None, track=None,
+                 tunnel_token=tunnel_token)
 
     try:
         # Python block-buffers stdout when it is not a terminal, so
@@ -153,7 +183,25 @@ def run_job(job_id, job_dir, url, audio_format, bitrate):
     done = 0
     tail = []
 
-    for line in proc.stdout:
+    deadline = time.monotonic() + int(os.environ.get("JOB_TIMEOUT", "3000"))
+    selector = selectors.DefaultSelector()
+    selector.register(proc.stdout, selectors.EVENT_READ)
+
+    while proc.poll() is None:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            proc.kill()
+            proc.wait()
+            set_progress(job_id, state="error", code="error.spotdl.timeout",
+                         message="spotdl exceeded the time limit and was stopped")
+            shutil.rmtree(job_dir, ignore_errors=True)
+            return
+        events = selector.select(timeout=min(1, remaining))
+        if not events:
+            continue
+        line = proc.stdout.readline()
+        if not line:
+            continue
         line = line.rstrip()
         tail.append(line)
         del tail[:-25]
@@ -196,15 +244,7 @@ def run_job(job_id, job_dir, url, audio_format, bitrate):
                 percent=round(done / total * 100, 1) if total else None,
             )
 
-    # Hard ceiling so a wedged spotdl can't hold the job open forever.
-    try:
-        proc.wait(timeout=int(os.environ.get("JOB_TIMEOUT", "3000")))
-    except subprocess.TimeoutExpired:
-        proc.kill()
-        set_progress(job_id, state="error", code="error.spotdl.timeout",
-                     message="spotdl exceeded the time limit and was stopped")
-        shutil.rmtree(job_dir, ignore_errors=True)
-        return
+    selector.close()
 
     files = sorted(p for p in job_dir.iterdir()
                    if p.is_file() and p.suffix.lower() != ".zip")
@@ -238,7 +278,7 @@ def run_job(job_id, job_dir, url, audio_format, bitrate):
         size=media.stat().st_size,
         tracks_done=done,
         total_tracks=total,
-        url=f"{API_URL}tunnel?id={job_id}",
+        url=f"{API_URL}tunnel?id={job_id}&token={tunnel_token}",
     )
 
 
@@ -254,21 +294,31 @@ def safe_zip_name(url, count):
 @app.route("/", methods=["POST"])
 def create():
     sweep()
+    if active_jobs() >= MAX_ACTIVE_JOBS:
+        return jsonify({"status": "error", "error": {"code": "error.api.busy"}}), 429
     data = request.get_json(silent=True) or {}
     url = data.get("url")
     if not url:
         return jsonify({"status": "error",
                         "error": {"code": "error.api.link.missing"}}), 400
+    parsed = urlparse(str(url))
+    if parsed.scheme not in ("http", "https") or not parsed.hostname:
+        return jsonify({"status": "error", "error": {"code": "error.api.link.invalid"}}), 400
 
     audio_format = data.get("audioFormat", "mp3")
     bitrate = str(data.get("audioBitrate", "320"))
+    if audio_format not in ("mp3", "m4a", "opus", "wav", "flac"):
+        return jsonify({"status": "error", "error": {"code": "error.api.audio_format.invalid"}}), 400
+    if bitrate not in ("best", "128", "192", "256", "320"):
+        return jsonify({"status": "error", "error": {"code": "error.api.audio_bitrate.invalid"}}), 400
 
     job_id = uuid.uuid4().hex
+    tunnel_token = secrets.token_urlsafe(32)
     job_dir = WORK_DIR / job_id
     job_dir.mkdir(parents=True, exist_ok=True)
 
     Thread(target=run_job,
-           args=(job_id, job_dir, url, audio_format, bitrate),
+           args=(job_id, job_dir, url, audio_format, bitrate, tunnel_token),
            daemon=True).start()
 
     return jsonify({
@@ -283,6 +333,7 @@ def progress():
     p = get_progress(request.args.get("id", ""))
     if not p:
         return jsonify({"state": "unknown"}), 404
+    p.pop("tunnel_token", None)
     return jsonify(p)
 
 

@@ -129,19 +129,15 @@ async function notify(title, message, variant) {
 // It costs nothing: cobalt already sends a Content-Disposition header on
 // every tunnel, so Chrome derives the correct name by itself.
 
-let lastBackend = null;
-// Set only while the fallback path is retrying on the other backend.
-let forceBackend = null;
-
-async function askCobalt(pageUrl, extra = {}) {
+async function askCobalt(pageUrl, extra = {}, forcedBackend = null) {
   const cfg = await config();
   const hosts = Array.isArray(cfg.ytdlpHosts) ? cfg.ytdlpHosts : DEFAULT_YTDLP_HOSTS;
 
-  const useSpotdl = forceBackend
-    ? forceBackend === "spotdl"
+  const useSpotdl = forcedBackend
+    ? forcedBackend === "spotdl"
     : isSpotify(pageUrl) && cfg.spotdlUrl;
-  const useYtdlp = !useSpotdl && (forceBackend
-    ? forceBackend === "yt-dlp"
+  const useYtdlp = !useSpotdl && (forcedBackend
+    ? forcedBackend === "yt-dlp"
     : useYtdlpFor(pageUrl, hosts) && cfg.ytdlpUrl);
 
   const endpoint = useSpotdl ? cfg.spotdlUrl : useYtdlp ? cfg.ytdlpUrl : cfg.apiUrl;
@@ -150,8 +146,9 @@ async function askCobalt(pageUrl, extra = {}) {
     Accept: "application/json",
     "Content-Type": "application/json"
   };
-  // Only sent if you've turned on API keys via API_AUTH_REQUIRED.
-  if (cfg.apiKey && !useYtdlp) headers.Authorization = `Api-Key ${cfg.apiKey}`;
+  // The local helper services require this key; compatible cobalt instances
+  // may also opt into the same Api-Key header.
+  if (cfg.apiKey) headers.Authorization = `Api-Key ${cfg.apiKey}`;
 
   // The two backends accept different parameters. Cobalt validates its
   // request body strictly and rejects unknown keys with
@@ -180,9 +177,9 @@ async function askCobalt(pageUrl, extra = {}) {
         ...extra
       };
 
-  lastBackend = useSpotdl ? "spotdl" : useYtdlp ? "yt-dlp" : "cobalt";
-  log("info", `using ${lastBackend}`, pageUrl.slice(0, 120));
-  console.log(`[strwBalt] using ${lastBackend} backend: ${endpoint}`);
+  const backend = useSpotdl ? "spotdl" : useYtdlp ? "yt-dlp" : "cobalt";
+  log("info", `using ${backend}`, pageUrl.slice(0, 120));
+  console.log(`[strwBalt] using ${backend} backend: ${endpoint}`);
 
   const res = await fetch(endpoint, {
     method: "POST",
@@ -196,7 +193,7 @@ async function askCobalt(pageUrl, extra = {}) {
   } catch {
     throw new Error(`instance returned non-JSON (HTTP ${res.status})`);
   }
-  return data;
+  return { data, backend, endpoint };
 }
 
 // Live job state, read by the popup while a download is running.
@@ -220,7 +217,9 @@ async function pollJob(base, jobId, pageUrl) {
 
       let p;
       try {
-        const res = await fetch(`${base}/progress?id=${jobId}`);
+        const cfg = await config();
+        const headers = cfg.apiKey ? { Authorization: `Api-Key ${cfg.apiKey}` } : {};
+        const res = await fetch(`${base}/progress?id=${jobId}`, { headers });
         p = await res.json();
       } catch {
         continue; // transient; keep polling
@@ -246,7 +245,7 @@ async function pollJob(base, jobId, pageUrl) {
   }
 }
 
-async function download(pageUrl, extra = {}, allowFallback = true) {
+async function download(pageUrl, extra = {}, allowFallback = true, forcedBackend = null) {
   // Immediate feedback on the button press. The follow-up toast reports
   // the outcome; without this there's a long silent gap while yt-dlp
   // resolves formats or spotdl searches.
@@ -255,9 +254,9 @@ async function download(pageUrl, extra = {}, allowFallback = true) {
       .catch(() => {});
   }
 
-  let data;
+  let data, backend;
   try {
-    data = await askCobalt(pageUrl, extra);
+    ({ data, backend } = await askCobalt(pageUrl, extra, forcedBackend));
   } catch (e) {
     await log("error", "request failed", e.message);
     notify("backend unreachable", "", "err");
@@ -275,16 +274,14 @@ async function download(pageUrl, extra = {}, allowFallback = true) {
 
     if (otherAvailable) {
       await log("warn", "primary backend failed, trying the other");
-      forceBackend = wasYtdlp ? "cobalt" : "yt-dlp";
-      const res = await download(pageUrl, extra, false);
-      forceBackend = null;
+      const res = await download(pageUrl, extra, false, wasYtdlp ? "cobalt" : "yt-dlp");
       if (res.ok) return res;
     }
   }
 
   if (data.status === "error") {
     const detail = data.error?.message || data.error?.code || "unknown error";
-    await log("error", `${lastBackend || "backend"} failed`, detail);
+    await log("error", `${backend || "backend"} failed`, detail);
     notify("download failed", "", "err");
     await addHistory({ url: pageUrl, ok: false, error: String(detail).slice(0, 200), backend: null });
     return { ok: false, error: String(detail).slice(0, 300) };
@@ -319,7 +316,7 @@ async function download(pageUrl, extra = {}, allowFallback = true) {
   // yt-dlp returns a job we poll; cobalt answers with a tunnel directly.
   if (data.status === "job") {
     const cfg2 = await config();
-    const jobBase = lastBackend === "spotdl" ? cfg2.spotdlUrl : cfg2.ytdlpUrl;
+    const jobBase = backend === "spotdl" ? cfg2.spotdlUrl : cfg2.ytdlpUrl;
     const base = jobBase.replace(/\/$/, "");
     const final = await pollJob(base, data.id, pageUrl);
     if (!final.ok) return final;
@@ -339,7 +336,7 @@ async function download(pageUrl, extra = {}, allowFallback = true) {
       url: pageUrl,
       filename: data.filename || null,
       ok: true,
-      backend: lastBackend
+      backend
     });
     await log("ok", "download started", data.filename || "");
     notify(data.filename ? `saving ${data.filename}` : "download started",

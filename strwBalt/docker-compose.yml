@@ -63,12 +63,14 @@ services:
       - 127.0.0.1:9100:9100
     environment:
       API_URL: "http://localhost:9100/"
+      API_KEY: "${STRWBALT_API_KEY:?Run install.sh or install-windows.bat first}"
+      MAX_ACTIVE_JOBS: "2"
       # Shares the same proof-of-origin token provider cobalt uses. Without
       # it YouTube returns "Sign in to confirm you're not a bot".
       POT_BASE_URL: "http://bgutil-pot:4416"
       # Pulls the newest yt-dlp on every start. Keep this on — staying
       # current is most of what makes yt-dlp reliable.
-      AUTO_UPDATE: "1"
+      AUTO_UPDATE: "0"
       # Optional: cookies.txt (Netscape format) for age-restricted or
       # private videos. Create the file, then uncomment the volume below.
       # COOKIES_FILE: "/cookies.txt"
@@ -93,8 +95,10 @@ services:
       - 127.0.0.1:9200:9200
     environment:
       API_URL: "http://localhost:9200/"
+      API_KEY: "${STRWBALT_API_KEY:?Run install.sh or install-windows.bat first}"
+      MAX_ACTIVE_JOBS: "2"
       POT_BASE_URL: "http://bgutil-pot:4416"
-      AUTO_UPDATE: "1"
+      AUTO_UPDATE: "0"
     depends_on:
       bgutil-pot:
         condition: service_healthy
@@ -106,6 +110,7 @@ services:
     image: nickfedor/watchtower
     restart: unless-stopped
     container_name: strwbalt-watchtower
+    profiles: ["automatic-updates"]
     command: --cleanup --scope strwbalt --interval 3600 --include-restarting
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock

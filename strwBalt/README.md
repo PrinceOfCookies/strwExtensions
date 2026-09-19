@@ -20,6 +20,7 @@ chmod +x install.sh check.sh uninstall.sh
 ```
 6. go to the extensions of your browser and turn on developer mode
 7. press "Load Unpacked" and select the folder titled "extension" and import that
+8. paste the private API key printed by the installer into the extension's Options page
 
 boom! your extension should be working! if any of the dots are red, please ensure the docker container is running. if theres any issues please contact me via WFHpExKKnsngRstw@simao.me
 
