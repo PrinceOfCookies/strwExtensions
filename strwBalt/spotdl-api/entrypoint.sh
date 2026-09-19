@@ -1,7 +1,7 @@
 #!/bin/sh
 # spotdl and yt-dlp both break when YouTube changes; keeping them current is
 # most of what keeps this working. Set AUTO_UPDATE=0 to skip.
-if [ "${AUTO_UPDATE:-1}" = "1" ]; then
+if [ "${AUTO_UPDATE:-0}" = "1" ]; then
     echo "[entrypoint] updating spotdl + yt-dlp..."
     pip install --no-cache-dir -U spotdl yt-dlp bgutil-ytdlp-pot-provider \
         || echo "[entrypoint] update failed, using bundled versions"

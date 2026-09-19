@@ -33,6 +33,7 @@ timeout /t 25 /nobreak >nul
 curl -fsS http://localhost:9000/ >nul 2>&1 && echo     cobalt: ready || echo     cobalt: not responding
 curl -fsS http://localhost:9100/health >nul 2>&1 && echo     yt-dlp: ready || echo     yt-dlp: not responding
 
+
 echo.
 echo   Next: install the browser extension
 echo   -----------------------------------

@@ -2,7 +2,7 @@
 # yt-dlp needs to stay current - YouTube changes break extraction regularly,
 # and staying up to date is most of what makes yt-dlp reliable. Set
 # AUTO_UPDATE=0 to skip (e.g. if you're offline).
-if [ "${AUTO_UPDATE:-1}" = "1" ]; then
+if [ "${AUTO_UPDATE:-0}" = "1" ]; then
     echo "[entrypoint] updating yt-dlp..."
     pip install --no-cache-dir -U yt-dlp bgutil-ytdlp-pot-provider || echo "[entrypoint] update failed, using bundled versions"
 fi

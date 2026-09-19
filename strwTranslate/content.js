@@ -15,9 +15,11 @@
     settings: { attributes: true, pageTitle: true, skipSame: true },
     nodes: [],
     originals: new WeakMap(),
+    translated: new WeakMap(),
     attrs: [],
     attrSeen: new WeakMap(),
     title: null,
+    translatedTitle: null,
     pending: [],
     observer: null,
     debounce: null
@@ -55,7 +57,11 @@
       if (!S.originals.has(node)) { S.originals.set(node, raw); S.nodes.push(node); }
       units.push({
         text: core,
-        write: (v) => { node.nodeValue = lead + v + trail; }
+        write: (v) => {
+          const translated = lead + v + trail;
+          node.nodeValue = translated;
+          S.translated.set(node, translated);
+        }
       });
     }
 
@@ -76,11 +82,15 @@
             if (rec) source = rec.original; else continue;
           } else {
             seen.add(a);
-            S.attrs.push({ el, attr: a, original: v });
+            S.attrs.push({ el, attr: a, original: v, translated: null });
           }
           units.push({
             text: source.replace(/\s+/g, " ").trim(),
-            write: (t) => el.setAttribute(a, t)
+            write: (t) => {
+              el.setAttribute(a, t);
+              const rec = S.attrs.find((r) => r.el === el && r.attr === a);
+              if (rec) rec.translated = t;
+            }
           });
         }
       }
@@ -91,7 +101,7 @@
       const original = S.title;
       units.push({
         text: original.replace(/\s+/g, " ").trim(),
-        write: (t) => { document.title = t; }
+        write: (t) => { document.title = t; S.translatedTitle = t; }
       });
     }
 
@@ -174,15 +184,20 @@
   function restore() {
     unwatch();
     for (const node of S.nodes) {
-      if (S.originals.has(node)) node.nodeValue = S.originals.get(node);
+      if (S.originals.has(node) && node.nodeValue === S.translated.get(node)) {
+        node.nodeValue = S.originals.get(node);
+      }
     }
     for (const r of S.attrs) {
-      try { r.el.setAttribute(r.attr, r.original); } catch (e) {}
+      try {
+        if (r.el.getAttribute(r.attr) === r.translated) r.el.setAttribute(r.attr, r.original);
+      } catch (e) {}
     }
-    if (S.title !== null) document.title = S.title;
+    if (S.title !== null && document.title === S.translatedTitle) document.title = S.title;
     S.nodes = [];
     S.attrs = [];
     S.title = null;
+    S.translatedTitle = null;
     S.active = false;
     S.target = null;
     document.documentElement.removeAttribute("data-strw-translated");

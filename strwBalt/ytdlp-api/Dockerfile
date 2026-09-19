@@ -12,7 +12,7 @@ RUN apt-get update \
 RUN pip install --no-cache-dir flask gunicorn yt-dlp bgutil-ytdlp-pot-provider
 
 WORKDIR /app
-COPY server.py entrypoint.sh ./
+COPY server.py test_server.py entrypoint.sh ./
 RUN chmod +x entrypoint.sh
 
 EXPOSE 9100

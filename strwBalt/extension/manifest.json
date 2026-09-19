@@ -17,6 +17,10 @@
     "http://localhost:9200/*",
     "http://127.0.0.1:9200/*"
   ],
+  "optional_host_permissions": [
+    "http://*/*",
+    "https://*/*"
+  ],
   "background": {
     "service_worker": "background.js"
   },

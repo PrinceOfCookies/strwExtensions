@@ -54,6 +54,7 @@ else
     echo "  Backend started with problems — see the messages above."
 fi
 
+
 cat <<'NEXT'
 
   Next: install the browser extension
