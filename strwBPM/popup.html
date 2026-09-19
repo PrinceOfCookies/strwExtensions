@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <link rel="stylesheet" href="popup.css" />
+</head>
+<body>
+  <header>
+    <div class="brand">
+      <span class="hat" aria-hidden="true">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M6.5 13V9.5a5.5 5.5 0 0 1 11 0V13"/>
+          <ellipse cx="12" cy="13.6" rx="9.5" ry="2.9"/>
+          <path d="M6.6 11.2h10.8"/>
+        </svg>
+      </span>
+      <div class="wordmark">strw<span>BPM</span></div>
+    </div>
+    <div class="dots">
+      <span class="dot" id="dot-deezer" title="Deezer"></span>
+      <span class="dot" id="dot-itunes" title="iTunes"></span>
+    </div>
+  </header>
+
+  <nav class="tabs">
+    <button class="tab active" data-tab="lookup">lookup</button>
+    <button class="tab" data-tab="history">history</button>
+    <button class="tab" data-tab="logs">logs</button>
+    <button class="tab" data-tab="settings">settings</button>
+  </nav>
+
+  <section id="panel-lookup" class="panel active">
+    <div class="row">
+      <input id="link" type="text" placeholder="spotify track link" spellcheck="false" />
+      <button id="from-tab" class="ghost" title="use the track open in this tab">tab</button>
+    </div>
+    <button id="go" class="primary wide">get BPM</button>
+    <div class="msg" id="msg"></div>
+
+    <div id="result" class="result hidden">
+      <div class="track">
+        <img id="art" alt="" />
+        <div class="track-text">
+          <div class="track-title" id="t-title"></div>
+          <div class="track-artist" id="t-artist"></div>
+        </div>
+      </div>
+
+      <div class="readout">
+        <div class="bpm-block">
+          <div class="bpm" id="bpm">—</div>
+          <div class="bpm-label">BPM</div>
+        </div>
+        <div class="side">
+          <div class="chip" id="key-chip"><span id="key-name">—</span><b id="key-camelot"></b></div>
+          <div class="halftime" id="halftime"></div>
+        </div>
+      </div>
+
+      <div class="conf-wrap" id="conf-wrap">
+        <div class="conf-top"><span id="conf-label"></span><span id="conf-pct"></span></div>
+        <div class="bar"><span id="conf-fill"></span></div>
+      </div>
+
+      <div class="sources" id="sources"></div>
+      <div class="matchnote" id="matchnote"></div>
+    </div>
+  </section>
+
+  <section id="panel-history" class="panel">
+    <div class="panel-head">
+      <span class="hint">last 50 lookups</span>
+      <button id="clear-history" class="ghost small">clear</button>
+    </div>
+    <div id="history"></div>
+  </section>
+
+  <section id="panel-logs" class="panel">
+    <div class="panel-head">
+      <span class="hint">what the extension did</span>
+      <button id="clear-logs" class="ghost small">clear</button>
+    </div>
+    <div id="logs"></div>
+  </section>
+
+  <section id="panel-settings" class="panel">
+    <label class="field">
+      <span>where the BPM comes from</span>
+      <select id="preferSource">
+        <option value="auto">auto</option>
+        <option value="catalogue">catalogue only</option>
+        <option value="analysis">analyse the audio only</option>
+      </select>
+    </label>
+
+    <label class="field">
+      <span>match strictness</span>
+      <select id="matchStrictness">
+        <option value="strict">strict</option>
+        <option value="balanced">balanced</option>
+        <option value="loose">loose</option>
+      </select>
+    </label>
+
+    <label class="check">
+      <input type="checkbox" id="alwaysAnalyse" />
+      <span>always analyse the preview, even when the catalogue has a BPM</span>
+    </label>
+
+    <div class="divider"></div>
+
+    <p class="hint">
+      you can add your own spotify developer app credentials to this extension,
+      which allows the extension to read the track's ISRC and matches the exact
+      recording instead of searching by name. do note that this is completely
+      optional and may require spotify premium to function correctly.
+    </p>
+    <label class="field">
+      <span>client ID</span>
+      <input id="spotifyClientId" type="text" spellcheck="false" placeholder="optional" />
+    </label>
+    <label class="field">
+      <span>client secret</span>
+      <input id="spotifyClientSecret" type="password" spellcheck="false" placeholder="optional" />
+    </label>
+
+    <button id="save" class="primary wide">save</button>
+    <div class="msg" id="save-msg"></div>
+  </section>
+
+  <script src="analyze.js"></script>
+  <script src="popup.js"></script>
+</body>
+</html>

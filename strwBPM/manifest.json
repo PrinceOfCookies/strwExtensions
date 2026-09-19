@@ -1,0 +1,35 @@
+{
+  "manifest_version": 3,
+  "name": "strwBPM",
+  "version": "1.1.0",
+  "description": "Paste a Spotify link, get the BPM and key.",
+  "permissions": [
+    "storage",
+    "tabs"
+  ],
+  "host_permissions": [
+    "https://open.spotify.com/*",
+    "https://api.spotify.com/*",
+    "https://accounts.spotify.com/*",
+    "https://api.deezer.com/*",
+    "https://*.dzcdn.net/*",
+    "https://itunes.apple.com/*",
+    "https://*.mzstatic.com/*",
+    "https://*.scdn.co/*",
+    "https://*.spotifycdn.com/*"
+  ],
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "strwBPM",
+    "default_icon": {
+      "512": "icons/icon512.png"
+    }
+  },
+  "icons": {
+    "512": "icons/icon512.png"
+  }
+}
